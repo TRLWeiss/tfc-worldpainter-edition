@@ -1,0 +1,1287 @@
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/CommonEventHandler.java src/main/java/net/dries007/tfc/CommonEventHandler.java
+--- tfc-1.7.23.181/net/dries007/tfc/CommonEventHandler.java
++++ src/main/java/net/dries007/tfc/CommonEventHandler.java
+@@ -352,6 +352,12 @@
+             {
+                 IBlockState waterState = world.getBlockState(result.getBlockPos());
+                 boolean isFreshWater = BlocksTFC.isFreshWater(waterState), isSaltWater = BlocksTFC.isSaltWater(waterState);
++                if (net.dries007.tfc.world.classic.VanillaWorldCompat.isVanillaWaterSource(waterState) && net.dries007.tfc.world.classic.VanillaWorldCompat.isSaltyBiome(world.getBiome(result.getBlockPos())))
++                {
++                    // 改造版：海洋、沙滩群系里的原版水按咸水算
++                    isFreshWater = false;
++                    isSaltWater = true;
++                }
+                 if ((isFreshWater && foodStats.attemptDrink(10, true)) || (isSaltWater && foodStats.attemptDrink(-1, true)))
+                 {
+                     //Simulated so client will check if he would drink before updating stats
+@@ -727,7 +733,7 @@
+     {
+         World world = event.getWorld();
+         BlockPos pos = new BlockPos(event.getX(), event.getY(), event.getZ());
+-        if (world.getWorldType() == TerraFirmaCraft.getWorldType() && event.getWorld().provider.getDimensionType() == DimensionType.OVERWORLD)
++        if (net.dries007.tfc.world.classic.VanillaWorldCompat.isTFCOverworld(world))
+         {
+             if (ConfigTFC.General.SPAWN_PROTECTION.preventMobs && event.getEntity().isCreatureType(EnumCreatureType.MONSTER, false))
+             {
+@@ -786,7 +792,7 @@
+                 if (Helpers.shouldPreventOnSurface(event.getEntity()))
+                 {
+                     int maximumY = (WorldTypeTFC.SEALEVEL - WorldTypeTFC.ROCKLAYER2) / 2 + WorldTypeTFC.ROCKLAYER2; // Half through rock layer 1
+-                    if (pos.getY() >= maximumY || world.canSeeSky(pos))
++                    if (net.dries007.tfc.world.classic.VanillaWorldCompat.toTfcY(pos.getY()) >= maximumY || world.canSeeSky(pos))
+                     {
+                         event.setResult(Event.Result.DENY);
+                     }
+@@ -806,7 +812,7 @@
+     public static void onEntityJoinWorldEvent(EntityJoinWorldEvent event)
+     {
+         Entity entity = event.getEntity();
+-        if (event.getWorld().getWorldType() == TerraFirmaCraft.getWorldType() && event.getWorld().provider.getDimensionType() == DimensionType.OVERWORLD)
++        if (net.dries007.tfc.world.classic.VanillaWorldCompat.isTFCOverworld(event.getWorld()))
+         {
+             // Fix skeleton rider traps spawning during thunderstorms
+             if (entity instanceof EntitySkeletonHorse && ConfigTFC.General.DIFFICULTY.preventMobsOnSurface && ((EntitySkeletonHorse) entity).isTrap())
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/ConfigTFC.java src/main/java/net/dries007/tfc/ConfigTFC.java
+--- tfc-1.7.23.181/net/dries007/tfc/ConfigTFC.java
++++ src/main/java/net/dries007/tfc/ConfigTFC.java
+@@ -491,7 +491,44 @@
+                 "You must specify by following the pattern 'modid:entity <rarity> <minGroupSpawn> <maxGroupSpawn>'",
+                 "Invalid entries will be ignored."})
+             @Config.LangKey("config." + MOD_ID + ".general.world.respawnableCreatures")
+-            public String[] respawnableCreatures = {"tfc:blackbeartfc 30 1 2", "tfc:boartfc 30 1 2", "tfc:cougartfc 30 1 2", "tfc:coyotetfc 30 3 6", "tfc:deertfc 70 2 4", "tfc:direwolftfc 30 1 2", "tfc:gazelletfc 70 2 4", "tfc:grizzlybeartfc 30 1 2", "tfc:grousetfc 70 2 3", "tfc:haretfc 70 2 3", "tfc:hyenatfc 30 3 6", "tfc:jackaltfc 30 3 6", "tfc:liontfc 30 1 2", "tfc:mongoosetfc 30 1 2", "tfc:muskoxtfc 70 2 4", "tfc:ocelottfc 70 2 4", "tfc:panthertfc 30 1 2", "tfc:pheasanttfc 70 2 3", "tfc:polarbeartfc 30 1 2", "tfc:quailtfc 70 2 3", "tfc:rabbittfc 70 2 3", "tfc:sabertoothtfc 30 1 2", "tfc:turkeytfc 70 2 3", "tfc:wildebeesttfc 70 2 4", "tfc:wolftfc 70 2 4", "tfc:yaktfc 70 2 4", "tfc:zebutfc 70 2 4"};        }
++            public String[] respawnableCreatures = {"tfc:blackbeartfc 30 1 2", "tfc:boartfc 30 1 2", "tfc:cougartfc 30 1 2", "tfc:coyotetfc 30 3 6", "tfc:deertfc 70 2 4", "tfc:direwolftfc 30 1 2", "tfc:gazelletfc 70 2 4", "tfc:grizzlybeartfc 30 1 2", "tfc:grousetfc 70 2 3", "tfc:haretfc 70 2 3", "tfc:hyenatfc 30 3 6", "tfc:jackaltfc 30 3 6", "tfc:liontfc 30 1 2", "tfc:mongoosetfc 30 1 2", "tfc:muskoxtfc 70 2 4", "tfc:ocelottfc 70 2 4", "tfc:panthertfc 30 1 2", "tfc:pheasanttfc 70 2 3", "tfc:polarbeartfc 30 1 2", "tfc:quailtfc 70 2 3", "tfc:rabbittfc 70 2 3", "tfc:sabertoothtfc 30 1 2", "tfc:turkeytfc 70 2 3", "tfc:wildebeesttfc 70 2 4", "tfc:wolftfc 70 2 4", "tfc:yaktfc 70 2 4", "tfc:zebutfc 70 2 4"};
++
++            @Config.RequiresWorldRestart
++            @Config.Comment({"[WorldPainter edition] Generate TFC content (ores, loose rocks, sticks, clay, peat, trees, plants, crops, berry bushes, fruit trees, animals) in overworlds that are NOT the TFC world type, e.g. maps made with WorldPainter.",
++                "Vanilla stone, dirt, grass and water are kept; TFC ores replace stone like other mods' ores do.",
++                "[改造版] 在非群峦世界类型的主世界里（比如 WorldPainter 做的地图）也生成群峦的矿脉、散石、树枝、黏土、泥炭、树、植物、作物、浆果丛、果树和动物。",
++                "原版的石头、泥土、草地和水都保留，群峦矿石像其他模组的矿石一样长在石头里。"})
++            @Config.LangKey("config." + MOD_ID + ".general.world.enableInNonTFCWorlds")
++            public boolean enableInNonTFCWorlds = true;
++
++            @Config.RequiresWorldRestart
++            @Config.RangeInt(min = 8, max = 240)
++            @Config.Comment({"[WorldPainter edition] Sea level of non-TFC overworlds. TFC heights (ore veins, rock layers, altitude temperature) are rescaled from TFC's Y=144 to this.",
++                "[改造版] 非群峦世界的海平面高度。群峦按 Y=144 设计的矿脉高度、岩层分界、海拔气温都换算到这个高度。原版和 WorldPainter 默认都在 62~63。"})
++            @Config.LangKey("config." + MOD_ID + ".general.world.nonTFCSeaLevel")
++            public int nonTFCSeaLevel = 63;
++
++            @Config.Comment({"[WorldPainter edition] Chunks that are already marked as decorated (WorldPainter exports them this way) get TFC content added once when first loaded.",
++                "[改造版] 已经标记为装饰过的区块（WorldPainter 默认这样导出）第一次加载时补生成一次群峦内容。"})
++            @Config.LangKey("config." + MOD_ID + ".general.world.retrogenPopulatedChunks")
++            public boolean retrogenPopulatedChunks = true;
++
++            @Config.Comment({"[WorldPainter edition] When back-filling such chunks, also run every other mod's world generators (ores etc.), not only TFC's. Turn off for old worlds that other mods already decorated.",
++                "[改造版] 补生成时把其他模组用标准接口注册的生成器（矿石等）也跑一遍，不只是群峦。用在已经被其他模组装饰过的旧存档时请关掉，否则会重复生成。"})
++            @Config.LangKey("config." + MOD_ID + ".general.world.retrogenOtherMods")
++            public boolean retrogenOtherMods = true;
++
++            @Config.RangeInt(min = 1, max = 64)
++            @Config.Comment({"[WorldPainter edition] How many pre-decorated chunks to back-fill per tick.",
++                "[改造版] 每个游戏刻最多补生成多少个区块。"})
++            @Config.LangKey("config." + MOD_ID + ".general.world.retrogenChunksPerTick")
++            public int retrogenChunksPerTick = 4;
++
++            @Config.Comment({"[WorldPainter edition] Spawn TFC animal herds when generating TFC content in non-TFC overworlds.",
++                "[改造版] 在非群峦世界生成群峦内容时，同时成群刷出群峦动物。"})
++            @Config.LangKey("config." + MOD_ID + ".general.world.nonTFCAnimals")
++            public boolean nonTFCAnimals = true;
++        }
+ 
+         public static final class WorldRegenCFG
+         {
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/TerraFirmaCraft.java src/main/java/net/dries007/tfc/TerraFirmaCraft.java
+--- tfc-1.7.23.181/net/dries007/tfc/TerraFirmaCraft.java
++++ src/main/java/net/dries007/tfc/TerraFirmaCraft.java
+@@ -163,6 +163,7 @@
+ 
+         ItemsTFC.init();
+         LootTablesTFC.init();
++        net.dries007.tfc.world.classic.VanillaWorldCompat.init();
+         CapabilityFood.init();
+         TFCTriggers.init();
+ 
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/api/util/IFruitTreeGenerator.java src/main/java/net/dries007/tfc/api/util/IFruitTreeGenerator.java
+--- tfc-1.7.23.181/net/dries007/tfc/api/util/IFruitTreeGenerator.java
++++ src/main/java/net/dries007/tfc/api/util/IFruitTreeGenerator.java
+@@ -46,7 +46,7 @@
+                 return false;
+ 
+         // Check if there is a solid block beneath
+-        if (!BlocksTFC.isSoil(world.getBlockState(pos.down())))
++        if (!BlocksTFC.isSoilForPlacement(world.getBlockState(pos.down())))
+             return false;
+ 
+         // Check the position for liquids, etc.
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/objects/blocks/BlocksTFC.java src/main/java/net/dries007/tfc/objects/blocks/BlocksTFC.java
+--- tfc-1.7.23.181/net/dries007/tfc/objects/blocks/BlocksTFC.java
++++ src/main/java/net/dries007/tfc/objects/blocks/BlocksTFC.java
+@@ -790,7 +790,8 @@
+ 
+     public static boolean isFreshWater(IBlockState current)
+     {
+-        return current == FluidsTFC.FRESH_WATER.get().getBlock().getDefaultState();
++        // 改造版：原版水源方块也算淡水（耕地保湿、淡水植物都靠它）
++        return current == FluidsTFC.FRESH_WATER.get().getBlock().getDefaultState() || net.dries007.tfc.world.classic.VanillaWorldCompat.isVanillaWaterSource(current);
+     }
+ 
+     public static boolean isSaltWater(IBlockState current)
+@@ -844,6 +845,7 @@
+     public static boolean isGrowableSoil(IBlockState current)
+     {
+         if (current.getBlock() instanceof BlockPeat) return false;
++        if (isVanillaSoil(current)) return true; // 改造版：原版泥土草地上也能长群峦的树、浆果丛、果树
+         if (!(current.getBlock() instanceof BlockRockVariant)) return false;
+         Rock.Type type = ((BlockRockVariant) current.getBlock()).getType();
+         return type == GRASS || type == DRY_GRASS || type == DIRT || type == CLAY || type == CLAY_GRASS;
+@@ -874,9 +876,80 @@
+ 
+     public static boolean isGround(IBlockState current)
+     {
++        if (isVanillaGround(current)) return true; // 改造版：群峦动物、树枝也认原版地面
+         if (!(current.getBlock() instanceof BlockRockVariant)) return false;
+         Rock.Type type = ((BlockRockVariant) current.getBlock()).getType();
+         return type == GRASS || type == DRY_GRASS || type == DIRT || type == GRAVEL || type == RAW || type == SAND;
++    }
++
++    // ---------------- 改造版：原版（以及其他模组）的地表方块 ----------------
++    // 这些判定只在“放置、生长、生成”的地方用，不能塞进 isSoil 等原有判定：
++    // 群峦有些逻辑在 isSoil 为真后会把方块强转成 BlockRockVariant。
++
++    private static boolean isForeignBlock(IBlockState current)
++    {
++        Block block = current.getBlock();
++        return !(block instanceof BlockRockVariant) && !(block instanceof BlockPeat) && !(block instanceof BlockPeatGrass);
++    }
++
++    /** 原版或其他模组的草方块（草地、菌丝、灰化土以外的同类方块） */
++    public static boolean isVanillaGrass(IBlockState current)
++    {
++        if (!isForeignBlock(current)) return false;
++        Block block = current.getBlock();
++        if (block instanceof net.minecraft.block.BlockGrass || block instanceof net.minecraft.block.BlockMycelium) return true;
++        return current.getMaterial() == Material.GRASS && current.isFullCube() && block != net.minecraft.init.Blocks.HAY_BLOCK && !(block instanceof net.minecraft.block.BlockGrassPath);
++    }
++
++    /** 原版或其他模组的泥土（泥土、砂土、灰化土等） */
++    public static boolean isVanillaDirt(IBlockState current)
++    {
++        if (!isForeignBlock(current)) return false;
++        Block block = current.getBlock();
++        if (block instanceof net.minecraft.block.BlockDirt) return true;
++        return current.getMaterial() == Material.GROUND && current.isFullCube() && !(block instanceof net.minecraft.block.BlockFarmland)
++            && !(block instanceof net.minecraft.block.BlockGrassPath) && !(block instanceof net.minecraft.block.BlockSoulSand);
++    }
++
++    public static boolean isVanillaSoil(IBlockState current)
++    {
++        return isVanillaGrass(current) || isVanillaDirt(current);
++    }
++
++    public static boolean isVanillaSand(IBlockState current)
++    {
++        return isForeignBlock(current) && current.getBlock() instanceof net.minecraft.block.BlockSand;
++    }
++
++    public static boolean isVanillaGravel(IBlockState current)
++    {
++        return isForeignBlock(current) && current.getBlock() instanceof net.minecraft.block.BlockGravel;
++    }
++
++    public static boolean isVanillaStone(IBlockState current)
++    {
++        return current.getBlock() == net.minecraft.init.Blocks.STONE;
++    }
++
++    public static boolean isVanillaGround(IBlockState current)
++    {
++        return isVanillaSoil(current) || isVanillaSand(current) || isVanillaGravel(current) || isVanillaStone(current);
++    }
++
++    /** 放置植物、作物、散石时用：群峦土壤或原版土壤 */
++    public static boolean isSoilForPlacement(IBlockState current)
++    {
++        return isSoil(current) || isVanillaSoil(current);
++    }
++
++    public static boolean isSandForPlacement(IBlockState current)
++    {
++        return isSand(current) || isVanillaSand(current);
++    }
++
++    public static boolean isSoilOrGravelForPlacement(IBlockState current)
++    {
++        return isSoilOrGravel(current) || isVanillaSoil(current) || isVanillaGravel(current);
+     }
+ 
+     private static <T extends Block> T register(IForgeRegistry<Block> r, String name, T block, CreativeTabs ct)
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/objects/blocks/plants/BlockPlantTFC.java src/main/java/net/dries007/tfc/objects/blocks/plants/BlockPlantTFC.java
+--- tfc-1.7.23.181/net/dries007/tfc/objects/blocks/plants/BlockPlantTFC.java
++++ src/main/java/net/dries007/tfc/objects/blocks/plants/BlockPlantTFC.java
+@@ -389,25 +389,25 @@
+             case CACTUS:
+             case DESERT:
+             case DESERT_TALL_PLANT:
+-                return BlocksTFC.isSand(state);
++                return BlocksTFC.isSandForPlacement(state);
+             case DRY:
+             case DRY_TALL_PLANT:
+-                return BlocksTFC.isSand(state) || BlocksTFC.isDryGrass(state);
++                return BlocksTFC.isSandForPlacement(state) || BlocksTFC.isDryGrass(state) || BlocksTFC.isVanillaGrass(state);
+             case REED:
+             case REED_SEA:
+             case TALL_REED:
+             case TALL_REED_SEA:
+-                return BlocksTFC.isSand(state) || BlocksTFC.isSoil(state);
++                return BlocksTFC.isSandForPlacement(state) || BlocksTFC.isSoilForPlacement(state);
+             case WATER:
+             case TALL_WATER:
+             case EMERGENT_TALL_WATER:
+-                return BlocksTFC.isSoilOrGravel(state);
++                return BlocksTFC.isSoilOrGravelForPlacement(state);
+             case WATER_SEA:
+             case TALL_WATER_SEA:
+             case EMERGENT_TALL_WATER_SEA:
+-                return BlocksTFC.isSand(state) || BlocksTFC.isSoilOrGravel(state);
++                return BlocksTFC.isSandForPlacement(state) || BlocksTFC.isSoilOrGravelForPlacement(state);
+             default:
+-                return BlocksTFC.isSoil(state);
++                return BlocksTFC.isSoilForPlacement(state);
+         }
+     }
+ }
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/objects/items/ItemSeedsTFC.java src/main/java/net/dries007/tfc/objects/items/ItemSeedsTFC.java
+--- tfc-1.7.23.181/net/dries007/tfc/objects/items/ItemSeedsTFC.java
++++ src/main/java/net/dries007/tfc/objects/items/ItemSeedsTFC.java
+@@ -63,6 +63,17 @@
+     {
+         ItemStack itemstack = player.getHeldItem(hand);
+         IBlockState state = worldIn.getBlockState(pos);
++        // 改造版：原版耕地上种群峦种子，先换成同位置岩层的群峦耕地（群峦作物靠耕地的方块实体记录养分）
++        if (facing == EnumFacing.UP && state.getBlock() instanceof net.minecraft.block.BlockFarmland && !(state.getBlock() instanceof BlockFarmlandTFC)
++            && player.canPlayerEdit(pos, facing, itemstack) && worldIn.isAirBlock(pos.up()))
++        {
++            net.dries007.tfc.api.types.Rock rock = net.dries007.tfc.world.classic.chunkdata.ChunkDataTFC.getRockHeight(worldIn, pos);
++            if (rock != null)
++            {
++                state = net.dries007.tfc.objects.blocks.stone.BlockRockVariant.get(rock, net.dries007.tfc.api.types.Rock.Type.FARMLAND).getDefaultState();
++                worldIn.setBlockState(pos, state);
++            }
++        }
+         if (facing == EnumFacing.UP && player.canPlayerEdit(pos.offset(facing), facing, itemstack) && state.getBlock().canSustainPlant(state, worldIn, pos, EnumFacing.UP, this) && worldIn.isAirBlock(pos.up()) && state.getBlock() instanceof BlockFarmlandTFC)
+         {
+             worldIn.setBlockState(pos.up(), BlockCropTFC.get(crop).getDefaultState());
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/util/RegenRocksSticks.java src/main/java/net/dries007/tfc/util/RegenRocksSticks.java
+--- tfc-1.7.23.181/net/dries007/tfc/util/RegenRocksSticks.java
++++ src/main/java/net/dries007/tfc/util/RegenRocksSticks.java
+@@ -31,7 +31,7 @@
+     @Override
+     public void generate(Random random, int chunkX, int chunkZ, World world, IChunkGenerator chunkGenerator, IChunkProvider chunkProvider)
+     {
+-        if (chunkGenerator instanceof ChunkGenTFC && world.provider.getDimension() == 0)
++        if (net.dries007.tfc.world.classic.VanillaWorldCompat.shouldGenerate(world, chunkGenerator) && world.provider.getDimension() == 0)
+         {
+             final BlockPos chunkBlockPos = new BlockPos(chunkX << 4, 0, chunkZ << 4);
+             final ChunkDataTFC baseChunkData = ChunkDataTFC.get(world, chunkBlockPos);
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/util/RegenWildCrops.java src/main/java/net/dries007/tfc/util/RegenWildCrops.java
+--- tfc-1.7.23.181/net/dries007/tfc/util/RegenWildCrops.java
++++ src/main/java/net/dries007/tfc/util/RegenWildCrops.java
+@@ -19,6 +19,6 @@
+     {
+         //Modified to allow replacement of grass during spring regen
+         Block test = world.getBlockState(pos).getBlock();
+-        return (test instanceof BlockShortGrassTFC || test.isAir(world.getBlockState(pos), world, pos) && BlocksTFC.isSoil(world.getBlockState(pos.down())));
++        return (test instanceof BlockShortGrassTFC || test.isAir(world.getBlockState(pos), world, pos) && BlocksTFC.isSoilForPlacement(world.getBlockState(pos.down())));
+     }
+ }
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/util/climate/ClimateHelper.java src/main/java/net/dries007/tfc/util/climate/ClimateHelper.java
+--- tfc-1.7.23.181/net/dries007/tfc/util/climate/ClimateHelper.java
++++ src/main/java/net/dries007/tfc/util/climate/ClimateHelper.java
+@@ -80,6 +80,7 @@
+      */
+     public static float heightFactor(int y)
+     {
++        y = net.dries007.tfc.world.classic.VanillaWorldCompat.toTfcY(y); // 改造版
+         if (y > SEALEVEL)
+         {
+             // This is much simpler and works just as well
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/VanillaWorldCompat.java src/main/java/net/dries007/tfc/world/classic/VanillaWorldCompat.java
+--- tfc-1.7.23.181/net/dries007/tfc/world/classic/VanillaWorldCompat.java
++++ src/main/java/net/dries007/tfc/world/classic/VanillaWorldCompat.java
+@@ -0,0 +1,492 @@
++/*
++ * Work under Copyright. Licensed under the EUPL.
++ * See the project README.md and LICENSE.txt for more information.
++ *
++ * 改造版新增：让群峦在原版世界类型（比如 WorldPainter 做的地图）的主世界里也生成全部资源。
++ * 不替换原版的石头、泥土、草地和水，群峦的内容像其他模组的矿石一样嵌进去。
++ */
++
++package net.dries007.tfc.world.classic;
++
++import java.util.ArrayList;
++import java.util.Iterator;
++import java.util.LinkedHashSet;
++import java.util.List;
++import java.util.Random;
++import java.util.Set;
++
++import net.minecraft.block.BlockFalling;
++import net.minecraft.block.BlockLiquid;
++import net.minecraft.block.material.Material;
++import net.minecraft.block.state.IBlockState;
++import net.minecraft.init.Blocks;
++import net.minecraft.util.math.BlockPos;
++import net.minecraft.util.math.ChunkPos;
++import net.minecraft.util.math.MathHelper;
++import net.minecraft.world.World;
++import net.minecraft.world.WorldServer;
++import net.minecraft.world.biome.Biome;
++import net.minecraft.world.chunk.Chunk;
++import net.minecraft.world.chunk.IChunkProvider;
++import net.minecraft.world.gen.ChunkProviderServer;
++import net.minecraft.world.gen.IChunkGenerator;
++import net.minecraft.world.gen.NoiseGeneratorPerlin;
++import net.minecraft.world.gen.layer.IntCache;
++import net.minecraftforge.common.BiomeDictionary;
++import net.minecraftforge.event.world.ChunkEvent;
++import net.minecraftforge.event.world.WorldEvent;
++import net.minecraftforge.fml.common.IWorldGenerator;
++import net.minecraftforge.fml.common.eventhandler.EventPriority;
++import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
++import net.minecraftforge.fml.common.gameevent.TickEvent;
++import net.minecraftforge.fml.common.registry.GameRegistry;
++
++import net.dries007.tfc.ConfigTFC;
++import net.dries007.tfc.TerraFirmaCraft;
++import net.dries007.tfc.api.types.RockCategory;
++import net.dries007.tfc.util.calendar.Month;
++import net.dries007.tfc.util.climate.ClimateHelper;
++import net.dries007.tfc.world.classic.biomes.BiomeDecoratorTFC;
++import net.dries007.tfc.world.classic.chunkdata.ChunkDataTFC;
++import net.dries007.tfc.world.classic.genlayers.GenLayerTFC;
++import net.dries007.tfc.world.classic.genlayers.datalayers.drainage.GenDrainageLayer;
++import net.dries007.tfc.world.classic.spawner.WorldEntitySpawnerTFC;
++import net.dries007.tfc.world.classic.worldgen.*;
++
++import static net.dries007.tfc.world.classic.WorldTypeTFC.SEALEVEL;
++
++public final class VanillaWorldCompat
++{
++    /* 当前主世界是不是按原版高度在算（海平面不在 144） */
++    private static volatile boolean vanillaHeights = false;
++    private static volatile int seaLevel = 63;
++
++    private static DataGenerator dataGenerator;
++    private static long dataGeneratorSeed;
++    private static final Set<Long> PENDING = new LinkedHashSet<>();
++    private static Generators generators;
++
++    // ---------------------------------------------------------------- 世界判定
++
++    public static boolean isEnabled()
++    {
++        return ConfigTFC.General.WORLD.enableInNonTFCWorlds;
++    }
++
++    public static boolean isTFCWorldType(World world)
++    {
++        return world.getWorldType() == TerraFirmaCraft.getWorldType();
++    }
++
++    /** 非群峦世界类型的主世界，并且开启了原版世界支持 */
++    public static boolean isVanillaOverworld(World world)
++    {
++        return isEnabled() && world.provider != null && world.provider.getDimension() == 0 && !isTFCWorldType(world);
++    }
++
++    /** 群峦的规则（刷怪、动物气候等）在这个世界的主世界生效 */
++    public static boolean isTFCOverworld(World world)
++    {
++        return world.provider != null && world.provider.getDimension() == 0 && (isTFCWorldType(world) || isEnabled());
++    }
++
++    /** 这个世界的区块要不要挂群峦区块数据 */
++    public static boolean hasChunkData(World world)
++    {
++        return isTFCWorldType(world) || isVanillaOverworld(world);
++    }
++
++    /** 群峦的生成器在这里要不要干活 */
++    public static boolean shouldGenerate(World world, IChunkGenerator chunkGenerator)
++    {
++        return chunkGenerator instanceof ChunkGenTFC || isVanillaOverworld(world);
++    }
++
++    public static boolean isSaltyBiome(Biome biome)
++    {
++        return BiomeDictionary.hasType(biome, BiomeDictionary.Type.OCEAN) || BiomeDictionary.hasType(biome, BiomeDictionary.Type.BEACH);
++    }
++
++    public static boolean isVanillaWaterSource(IBlockState state)
++    {
++        return (state.getBlock() == Blocks.WATER || state.getBlock() == Blocks.FLOWING_WATER) && state.getValue(BlockLiquid.LEVEL) == 0;
++    }
++
++    // ---------------------------------------------------------------- 高度换算
++
++    /**
++     * 原版世界的 Y 换算成群峦世界里的等价 Y。群峦海平面在 144，原版在 63 左右：
++     * 海平面以下按比例拉伸（深处的矿还在深处、浅层矿还在浅层），海平面以上一格对一格。
++     * 群峦世界里原样返回。
++     */
++    public static int toTfcY(int y)
++    {
++        if (!vanillaHeights) return y;
++        final int s = seaLevel;
++        return y <= s ? Math.round(y * (float) SEALEVEL / s) : y - s + SEALEVEL;
++    }
++
++    /** toTfcY 的反过程 */
++    public static int fromTfcY(int tfcY)
++    {
++        if (!vanillaHeights) return tfcY;
++        final int s = seaLevel;
++        int y = tfcY <= SEALEVEL ? Math.round(tfcY * (float) s / SEALEVEL) : tfcY - SEALEVEL + s;
++        return MathHelper.clamp(y, 0, 255);
++    }
++
++    public static boolean usesVanillaHeights()
++    {
++        return vanillaHeights;
++    }
++
++    public static WorldGenSettings defaultSettings()
++    {
++        return WorldGenSettings.fromString("").build();
++    }
++
++    // ---------------------------------------------------------------- 事件
++
++    public static void init()
++    {
++        GameRegistry.registerWorldGenerator(new OverworldGenerator(), 100);
++        net.minecraftforge.common.MinecraftForge.EVENT_BUS.register(VanillaWorldCompat.class);
++    }
++
++    @SubscribeEvent(priority = EventPriority.HIGHEST)
++    public static void onWorldLoad(WorldEvent.Load event)
++    {
++        World world = event.getWorld();
++        if (world.provider.getDimension() != 0) return;
++        vanillaHeights = isVanillaOverworld(world);
++        seaLevel = ConfigTFC.General.WORLD.nonTFCSeaLevel;
++        if (!world.isRemote)
++        {
++            synchronized (PENDING)
++            {
++                PENDING.clear();
++            }
++            if (vanillaHeights)
++            {
++                TerraFirmaCraft.getLog().info("Non-TFC overworld detected ({}). TFC content will be generated into it; sea level treated as Y={}.", world.getWorldType().getName(), seaLevel);
++            }
++        }
++    }
++
++    @SubscribeEvent
++    public static void onWorldUnload(WorldEvent.Unload event)
++    {
++        if (!event.getWorld().isRemote && event.getWorld().provider.getDimension() == 0)
++        {
++            synchronized (PENDING)
++            {
++                PENDING.clear();
++            }
++        }
++    }
++
++    @SubscribeEvent(priority = EventPriority.HIGH)
++    public static void onChunkLoad(ChunkEvent.Load event)
++    {
++        World world = event.getWorld();
++        if (world.isRemote || !isVanillaOverworld(world)) return;
++        Chunk chunk = event.getChunk();
++        ChunkDataTFC data = ChunkDataTFC.get(chunk);
++        if (!data.isInitialized())
++        {
++            if (!fillChunkData(world, chunk)) return;
++        }
++        // 已经装饰过（比如 WorldPainter 导出时标成了已装饰）但群峦还没来过的区块，排队补生成
++        if (chunk.isTerrainPopulated() && !data.isDecorated() && ConfigTFC.General.WORLD.retrogenPopulatedChunks)
++        {
++            synchronized (PENDING)
++            {
++                PENDING.add(ChunkPos.asLong(chunk.x, chunk.z));
++            }
++        }
++    }
++
++    @SubscribeEvent
++    public static void onChunkUnload(ChunkEvent.Unload event)
++    {
++        if (!event.getWorld().isRemote && event.getWorld().provider.getDimension() == 0)
++        {
++            synchronized (PENDING)
++            {
++                PENDING.remove(ChunkPos.asLong(event.getChunk().x, event.getChunk().z));
++            }
++        }
++    }
++
++    @SubscribeEvent
++    public static void onWorldTick(TickEvent.WorldTickEvent event)
++    {
++        if (event.phase != TickEvent.Phase.END || event.world.isRemote || event.world.provider.getDimension() != 0) return;
++        if (!isVanillaOverworld(event.world)) return;
++
++        WorldServer world = (WorldServer) event.world;
++        ChunkProviderServer provider = world.getChunkProvider();
++        List<long[]> ready = new ArrayList<>();
++        synchronized (PENDING)
++        {
++            if (PENDING.isEmpty()) return;
++            Iterator<Long> it = PENDING.iterator();
++            while (it.hasNext() && ready.size() < ConfigTFC.General.WORLD.retrogenChunksPerTick)
++            {
++                long key = it.next();
++                int x = (int) (key & 0xFFFFFFFFL);
++                int z = (int) (key >>> 32);
++                if (provider.getLoadedChunk(x, z) == null)
++                {
++                    it.remove();
++                    continue;
++                }
++                // 和原版装饰一样，需要东、南、东南三个邻居都已加载
++                if (provider.getLoadedChunk(x + 1, z) == null || provider.getLoadedChunk(x, z + 1) == null || provider.getLoadedChunk(x + 1, z + 1) == null)
++                {
++                    continue;
++                }
++                it.remove();
++                ready.add(new long[] {x, z});
++            }
++        }
++        for (long[] pos : ready)
++        {
++            retrogen(world, provider, (int) pos[0], (int) pos[1]);
++        }
++    }
++
++    private static void retrogen(WorldServer world, ChunkProviderServer provider, int chunkX, int chunkZ)
++    {
++        Chunk chunk = provider.getLoadedChunk(chunkX, chunkZ);
++        if (chunk == null) return;
++        ChunkDataTFC data = ChunkDataTFC.get(chunk);
++        if (!data.isInitialized() || data.isDecorated()) return;
++
++        boolean fallInstantly = BlockFalling.fallInstantly;
++        BlockFalling.fallInstantly = true;
++        try
++        {
++            if (ConfigTFC.General.WORLD.retrogenOtherMods)
++            {
++                // 所有模组用标准接口注册的生成器（包括下面的群峦生成器）都补跑一遍
++                GameRegistry.generateWorld(chunkX, chunkZ, world, provider.chunkGenerator, provider);
++            }
++            else
++            {
++                generateTFC(chunkRandom(world, chunkX, chunkZ), chunkX, chunkZ, world, provider.chunkGenerator, provider);
++            }
++        }
++        catch (Exception e)
++        {
++            TerraFirmaCraft.getLog().error("Failed to generate TFC content in pre-decorated chunk ({}, {})", chunkX, chunkZ, e);
++        }
++        finally
++        {
++            BlockFalling.fallInstantly = fallInstantly;
++        }
++    }
++
++    private static Random chunkRandom(World world, int chunkX, int chunkZ)
++    {
++        Random random = new Random(world.getSeed());
++        long xSeed = random.nextLong() >> 2 + 1L;
++        long zSeed = random.nextLong() >> 2 + 1L;
++        random.setSeed((xSeed * chunkX + zSeed * chunkZ) ^ world.getSeed());
++        return random;
++    }
++
++    // ---------------------------------------------------------------- 群峦内容生成
++
++    public static final class OverworldGenerator implements IWorldGenerator
++    {
++        @Override
++        public void generate(Random random, int chunkX, int chunkZ, World world, IChunkGenerator chunkGenerator, IChunkProvider chunkProvider)
++        {
++            if (!isVanillaOverworld(world) || chunkGenerator instanceof ChunkGenTFC) return;
++            generateTFC(random, chunkX, chunkZ, world, chunkGenerator, chunkProvider);
++        }
++    }
++
++    static void generateTFC(Random random, int chunkX, int chunkZ, World world, IChunkGenerator chunkGenerator, IChunkProvider chunkProvider)
++    {
++        Chunk chunk = world.getChunk(chunkX, chunkZ);
++        ChunkDataTFC data = ChunkDataTFC.get(chunk);
++        if (!data.isInitialized() && !fillChunkData(world, chunk)) return;
++        if (data.isDecorated()) return;
++        data.setDecorated(true);
++        chunk.markDirty();
++
++        // 生成器会读到东、南邻居的区块数据
++        ensureData(world, chunkProvider, chunkX + 1, chunkZ);
++        ensureData(world, chunkProvider, chunkX, chunkZ + 1);
++        ensureData(world, chunkProvider, chunkX + 1, chunkZ + 1);
++
++        Generators g = generators();
++        final BlockPos blockPos = new BlockPos(chunkX << 4, 0, chunkZ << 4);
++        final Biome biome = world.getBiome(blockPos.add(16, 0, 16));
++
++        g.soilPits.generate(random, chunkX, chunkZ, world, chunkGenerator, chunkProvider);
++        g.oreVeins.generate(random, chunkX, chunkZ, world, chunkGenerator, chunkProvider);
++        g.largeRocks.generate(random, chunkX, chunkZ, world, chunkGenerator, chunkProvider);
++        g.trees.generate(random, chunkX, chunkZ, world, chunkGenerator, chunkProvider);
++        g.berryBushes.generate(random, chunkX, chunkZ, world, chunkGenerator, chunkProvider);
++        g.fruitTrees.generate(random, chunkX, chunkZ, world, chunkGenerator, chunkProvider);
++        g.plantsFor(biome).generatePlants(world, random, blockPos);
++        g.looseRocks.generate(random, chunkX, chunkZ, world, chunkGenerator, chunkProvider);
++        if (ConfigTFC.General.WORLD.nonTFCAnimals)
++        {
++            WorldEntitySpawnerTFC.performWorldGenSpawning(world, biome, (chunkX << 4) + 8, (chunkZ << 4) + 8, 16, 16, random);
++        }
++        g.wildCrops.generate(random, chunkX, chunkZ, world, chunkGenerator, chunkProvider);
++    }
++
++    private static void ensureData(World world, IChunkProvider provider, int chunkX, int chunkZ)
++    {
++        Chunk chunk = provider.getLoadedChunk(chunkX, chunkZ);
++        if (chunk != null && !ChunkDataTFC.get(chunk).isInitialized())
++        {
++            fillChunkData(world, chunk);
++        }
++    }
++
++    private static synchronized Generators generators()
++    {
++        if (generators == null) generators = new Generators();
++        return generators;
++    }
++
++    private static final class Generators
++    {
++        final IWorldGenerator soilPits = new WorldGenSoilPits();
++        final IWorldGenerator oreVeins = new WorldGenOreVeins();
++        final IWorldGenerator largeRocks = new RarityBasedWorldGen(x -> x.largeRockRarity, new WorldGenLargeRocks());
++        final IWorldGenerator trees = new WorldGenTrees();
++        final IWorldGenerator berryBushes = new WorldGenBerryBushes();
++        final IWorldGenerator fruitTrees = new WorldGenFruitTrees();
++        final IWorldGenerator wildCrops = new WorldGenWildCrops();
++        final IWorldGenerator looseRocks = new WorldGenLooseRocks(true);
++        // 和群峦自己的群系用同样的水生植物密度：普通、湖泊河流、沼泽
++        final BiomeDecoratorTFC plants = new BiomeDecoratorTFC(0, 0);
++        final BiomeDecoratorTFC wetPlants = new BiomeDecoratorTFC(4, 5);
++        final BiomeDecoratorTFC swampPlants = new BiomeDecoratorTFC(16, 45);
++
++        BiomeDecoratorTFC plantsFor(Biome biome)
++        {
++            if (BiomeDictionary.hasType(biome, BiomeDictionary.Type.SWAMP)) return swampPlants;
++            if (BiomeDictionary.hasType(biome, BiomeDictionary.Type.RIVER) || BiomeDictionary.hasType(biome, BiomeDictionary.Type.WET)) return wetPlants;
++            return plants;
++        }
++    }
++
++    // ---------------------------------------------------------------- 区块数据
++
++    /**
++     * 按种子算出这个区块的群峦数据（三层岩石、稳定度、排水、降雨、气温、植被），算法和群峦自己的区块生成器一致。
++     * 岩层分界跟着这一列的实际地表高度走。
++     */
++    public static boolean fillChunkData(World world, Chunk chunk)
++    {
++        ChunkDataTFC data = ChunkDataTFC.get(chunk);
++        if (!data.isInitialized() && chunk.getCapability(net.dries007.tfc.world.classic.chunkdata.ChunkDataProvider.CHUNK_DATA_CAPABILITY, null) == null)
++        {
++            return false;
++        }
++        DataGenerator generator = dataGenerator(world.getSeed());
++        generator.fill(chunk, data);
++        chunk.markDirty();
++        return true;
++    }
++
++    private static synchronized DataGenerator dataGenerator(long seed)
++    {
++        if (dataGenerator == null || dataGeneratorSeed != seed)
++        {
++            dataGenerator = new DataGenerator(seed);
++            dataGeneratorSeed = seed;
++        }
++        return dataGenerator;
++    }
++
++    private static final class DataGenerator
++    {
++        private final GenLayerTFC rocks1, rocks2, rocks3, stability, drainage;
++        private final NoiseGeneratorPerlin rainNoise, floraDensityNoise, floraDiversityNoise, temperatureNoise;
++        private final float rainfallSpread, floraDensitySpread, floraDiversitySpread;
++
++        DataGenerator(long seed)
++        {
++            WorldGenSettings s = defaultSettings();
++            rocks1 = GenLayerTFC.initializeRock(seed + 1, RockCategory.Layer.TOP, s.rockLayerSize);
++            rocks2 = GenLayerTFC.initializeRock(seed + 2, RockCategory.Layer.MIDDLE, s.rockLayerSize);
++            rocks3 = GenLayerTFC.initializeRock(seed + 3, RockCategory.Layer.BOTTOM, s.rockLayerSize);
++            rainNoise = new NoiseGeneratorPerlin(new Random(seed + 4), 4);
++            floraDensityNoise = new NoiseGeneratorPerlin(new Random(seed + 5), 4);
++            floraDiversityNoise = new NoiseGeneratorPerlin(new Random(seed + 6), 4);
++            temperatureNoise = new NoiseGeneratorPerlin(new Random(seed + 7), 4);
++            stability = GenLayerTFC.initializeStability(seed + 9);
++            drainage = GenDrainageLayer.initialize(seed + 11);
++            rainfallSpread = (float) ConfigTFC.General.WORLD.rainfallSpreadFactor;
++            floraDiversitySpread = (float) ConfigTFC.General.WORLD.floraDiversitySpreadFactor;
++            floraDensitySpread = (float) ConfigTFC.General.WORLD.floraDensitySpreadFactor;
++        }
++
++        synchronized void fill(Chunk chunk, ChunkDataTFC data)
++        {
++            final int chunkX = chunk.x;
++            final int chunkZ = chunk.z;
++
++            IntCache.resetIntCache();
++            int[] rock1 = rocks1.getInts(chunkX * 16, chunkZ * 16, 16, 16).clone();
++            int[] rock2 = rocks2.getInts(chunkX * 16, chunkZ * 16, 16, 16).clone();
++            int[] rock3 = rocks3.getInts(chunkX * 16, chunkZ * 16, 16, 16).clone();
++            DataLayer[] stabilityLayer = layer(stability, chunkX, chunkZ);
++            DataLayer[] drainageLayer = layer(drainage, chunkX, chunkZ);
++
++            float rainfall = MathHelper.clamp(250f + 250f * rainfallSpread * (float) rainNoise.getValue(chunkX * 0.005, chunkZ * 0.005), 0, 500);
++            float floraDiversity = MathHelper.clamp(0.5f + 0.5f * floraDiversitySpread * (float) floraDiversityNoise.getValue(chunkX * 0.005, chunkZ * 0.005), 0, 1);
++            float floraDensity = MathHelper.clamp((0.3f + 0.2f * rainfall / 500f) + 0.4f * floraDensitySpread * (float) floraDensityNoise.getValue(chunkX * 0.05, chunkZ * 0.05), 0, 1);
++            float regionalFactor = 5f * 0.09f * (float) temperatureNoise.getValue(chunkX * 0.05, chunkZ * 0.05);
++            float averageTemp = ClimateHelper.monthFactor(regionalFactor, Month.AVERAGE_TEMPERATURE_MODIFIER, chunkZ << 4);
++
++            int[] seaLevelOffset = new int[256];
++            for (int x = 0; x < 16; x++)
++            {
++                for (int z = 0; z < 16; z++)
++                {
++                    int surface = findSurface(chunk, x, z);
++                    seaLevelOffset[z << 4 | x] = surface < 0 ? 0 : Math.max(0, toTfcY(surface) - SEALEVEL);
++                }
++            }
++            data.setGenerationData(rock1, rock2, rock3, stabilityLayer, drainageLayer, seaLevelOffset, rainfall, regionalFactor, averageTemp, floraDensity, floraDiversity);
++        }
++
++        private static DataLayer[] layer(GenLayerTFC gen, int chunkX, int chunkZ)
++        {
++            IntCache.resetIntCache();
++            int[] ints = gen.getInts(chunkX * 16, chunkZ * 16, 16, 16);
++            DataLayer[] layers = new DataLayer[256];
++            for (int i = 0; i < 256; i++)
++            {
++                layers[i] = DataLayer.get(ints[i]);
++            }
++            return layers;
++        }
++
++        private static int findSurface(Chunk chunk, int x, int z)
++        {
++            int top = Math.min(255, chunk.getTopFilledSegment() + 15);
++            for (int y = top; y > 0; y--)
++            {
++                Material m = chunk.getBlockState(x, y, z).getMaterial();
++                if (m == Material.ROCK || m == Material.GROUND || m == Material.GRASS || m == Material.SAND || m == Material.CLAY)
++                {
++                    return y;
++                }
++            }
++            return -1;
++        }
++    }
++
++    private VanillaWorldCompat() {}
++}
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/biomes/BiomeDecoratorTFC.java src/main/java/net/dries007/tfc/world/classic/biomes/BiomeDecoratorTFC.java
+--- tfc-1.7.23.181/net/dries007/tfc/world/classic/biomes/BiomeDecoratorTFC.java
++++ src/main/java/net/dries007/tfc/world/classic/biomes/BiomeDecoratorTFC.java
+@@ -145,6 +145,30 @@
+         ChunkDataTFC data = ChunkDataTFC.get(world, chunkPos);
+         if (!data.isInitialized()) return;
+ 
++        decoratePlants(world, rng, chunkPos, true);
++
++        MinecraftForge.EVENT_BUS.post(new DecorateBiomeEvent.Post(world, rng, forgeChunkPos));
++    }
++
++    /**
++     * 改造版：只生成群峦植物，不发装饰事件。用在非群峦世界里，原版的装饰流程已经发过这些事件，不能让其他模组再跑一遍。
++     */
++    public void generatePlants(final World world, final Random rng, final BlockPos chunkPos)
++    {
++        if (!ChunkDataTFC.get(world, chunkPos).isInitialized()) return;
++        decoratePlants(world, rng, chunkPos, false);
++    }
++
++    private boolean event(World world, Random rng, ChunkPos pos, DecorateBiomeEvent.Decorate.EventType type, boolean fireEvents)
++    {
++        return !fireEvents || TerrainGen.decorate(world, rng, pos, type);
++    }
++
++    private void decoratePlants(final World world, final Random rng, final BlockPos chunkPos, final boolean fireEvents)
++    {
++        ChunkPos forgeChunkPos = new ChunkPos(chunkPos);
++        ChunkDataTFC data = ChunkDataTFC.get(world, chunkPos);
++
+         final float avgTemperature = ClimateTFC.getAvgTemp(world, chunkPos);
+         final float rainfall = ChunkDataTFC.getRainfall(world, chunkPos);
+         final float floraDensity = data.getFloraDensity(); // Use for various plant based decoration (tall grass, those vanilla jungle shrub things, etc.)
+@@ -153,7 +177,7 @@
+         this.chunkPos = chunkPos;
+         // todo: settings for all the rarities?
+ 
+-        if (TerrainGen.decorate(world, rng, forgeChunkPos, DecorateBiomeEvent.Decorate.EventType.SHROOM))
++        if (event(world, rng, forgeChunkPos, DecorateBiomeEvent.Decorate.EventType.SHROOM, fireEvents))
+         {
+             for (Plant plant : TFCRegistries.PLANTS.getValuesCollection())
+             {
+@@ -170,7 +194,7 @@
+             }
+         }
+ 
+-        if (TerrainGen.decorate(world, rng, forgeChunkPos, DecorateBiomeEvent.Decorate.EventType.CACTUS))
++        if (event(world, rng, forgeChunkPos, DecorateBiomeEvent.Decorate.EventType.CACTUS, fireEvents))
+         {
+             for (Plant plant : TFCRegistries.PLANTS.getValuesCollection())
+             {
+@@ -188,7 +212,7 @@
+             }
+         }
+ 
+-        if (TerrainGen.decorate(world, rng, forgeChunkPos, DecorateBiomeEvent.Decorate.EventType.LILYPAD))
++        if (event(world, rng, forgeChunkPos, DecorateBiomeEvent.Decorate.EventType.LILYPAD, fireEvents))
+         {
+             for (Plant plant : TFCRegistries.PLANTS.getValuesCollection())
+             {
+@@ -219,7 +243,7 @@
+             }
+         }
+ 
+-        if (TerrainGen.decorate(world, rng, forgeChunkPos, DecorateBiomeEvent.Decorate.EventType.REED))
++        if (event(world, rng, forgeChunkPos, DecorateBiomeEvent.Decorate.EventType.REED, fireEvents))
+         {
+             for (Plant plant : TFCRegistries.PLANTS.getValuesCollection())
+             {
+@@ -252,7 +276,7 @@
+             }
+         }
+ 
+-        if (TerrainGen.decorate(world, rng, forgeChunkPos, DecorateBiomeEvent.Decorate.EventType.FLOWERS))
++        if (event(world, rng, forgeChunkPos, DecorateBiomeEvent.Decorate.EventType.FLOWERS, fireEvents))
+         {
+             for (Plant plant : TFCRegistries.PLANTS.getValuesCollection())
+             {
+@@ -332,7 +356,7 @@
+             }
+         }
+ 
+-        if (TerrainGen.decorate(world, rng, forgeChunkPos, DecorateBiomeEvent.Decorate.EventType.DEAD_BUSH))
++        if (event(world, rng, forgeChunkPos, DecorateBiomeEvent.Decorate.EventType.DEAD_BUSH, fireEvents))
+         {
+             for (Plant plant : TFCRegistries.PLANTS.getValuesCollection())
+             {
+@@ -365,7 +389,7 @@
+             }
+         }
+ 
+-        if (TerrainGen.decorate(world, rng, forgeChunkPos, DecorateBiomeEvent.Decorate.EventType.GRASS))
++        if (event(world, rng, forgeChunkPos, DecorateBiomeEvent.Decorate.EventType.GRASS, fireEvents))
+         {
+             for (Plant plant : TFCRegistries.PLANTS.getValuesCollection())
+             {
+@@ -396,6 +420,5 @@
+             }
+         }
+ 
+-        MinecraftForge.EVENT_BUS.post(new DecorateBiomeEvent.Post(world, rng, forgeChunkPos));
+     }
+ }
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/chunkdata/CapabilityChunkData.java src/main/java/net/dries007/tfc/world/classic/chunkdata/CapabilityChunkData.java
+--- tfc-1.7.23.181/net/dries007/tfc/world/classic/chunkdata/CapabilityChunkData.java
++++ src/main/java/net/dries007/tfc/world/classic/chunkdata/CapabilityChunkData.java
+@@ -35,7 +35,7 @@
+     {
+         // Per #922, if there's no world or no world type, something is seriously violating our assumptions and we will just fail.
+         //noinspection ConstantConditions
+-        if (event.getObject().getWorld() != null && event.getObject().getWorld().getWorldType() == TerraFirmaCraft.getWorldType())
++        if (event.getObject().getWorld() != null && net.dries007.tfc.world.classic.VanillaWorldCompat.hasChunkData(event.getObject().getWorld()))
+         {
+             event.addCapability(CHUNK_DATA, new ChunkDataProvider());
+         }
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/chunkdata/ChunkDataTFC.java src/main/java/net/dries007/tfc/world/classic/chunkdata/ChunkDataTFC.java
+--- tfc-1.7.23.181/net/dries007/tfc/world/classic/chunkdata/ChunkDataTFC.java
++++ src/main/java/net/dries007/tfc/world/classic/chunkdata/ChunkDataTFC.java
+@@ -134,6 +134,7 @@
+     private int chunkWorkage;
+     private long protectedTicks; // Used for hostile spawn protection. Starts negative, increases by players in the area
+     private long lastUpdateTick, lastUpdateYear; // The last time this chunk was updated by world regen
++    private boolean decorated; // 改造版：非群峦世界里，群峦内容是否已经生成过
+ 
+     /**
+      * INTERNAL USE ONLY.
+@@ -205,6 +206,16 @@
+         return initialized;
+     }
+ 
++    public boolean isDecorated()
++    {
++        return decorated;
++    }
++
++    public void setDecorated(boolean decorated)
++    {
++        this.decorated = decorated;
++    }
++
+     public Rock getRock1(BlockPos pos)
+     {
+         return getRock1(pos.getX() & 15, pos.getY() & 15);
+@@ -379,6 +390,7 @@
+ 
+     public Rock getRockLayerHeight(int x, int y, int z)
+     {
++        y = net.dries007.tfc.world.classic.VanillaWorldCompat.toTfcY(y); // 改造版：原版世界的高度先换算成群峦高度
+         int offset = getSeaLevelOffset(x, z);
+         if (y <= ROCKLAYER3 + offset) return getRockLayer3(x, z);
+         if (y <= ROCKLAYER2 + offset) return getRockLayer2(x, z);
+@@ -431,6 +443,10 @@
+             root.setLong("protectedTicks", instance.protectedTicks);
+             root.setLong("lastUpdateTick", instance.lastUpdateTick);
+             root.setLong("lastUpdateYear", instance.lastUpdateYear);
++            if (instance.decorated)
++            {
++                root.setBoolean("tfcDecorated", true);
++            }
+ 
+             NBTTagList veinList = new NBTTagList();
+             for (Vein vein : instance.generatedVeins)
+@@ -468,6 +484,7 @@
+                 instance.protectedTicks = root.getLong("protectedTicks");
+                 instance.lastUpdateTick = root.getLong("lastUpdateTick");
+                 instance.lastUpdateYear = root.getLong("lastUpdateYear");
++                instance.decorated = root.getBoolean("tfcDecorated");
+ 
+                 instance.generatedVeins = new HashSet<>();
+ 
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/RarityBasedWorldGen.java src/main/java/net/dries007/tfc/world/classic/worldgen/RarityBasedWorldGen.java
+--- tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/RarityBasedWorldGen.java
++++ src/main/java/net/dries007/tfc/world/classic/worldgen/RarityBasedWorldGen.java
+@@ -30,9 +30,9 @@
+     @Override
+     public final void generate(Random random, int chunkX, int chunkZ, World world, IChunkGenerator chunkGenerator, IChunkProvider chunkProvider)
+     {
+-        if (chunkGenerator instanceof ChunkGenTFC)
++        if (chunkGenerator instanceof ChunkGenTFC || net.dries007.tfc.world.classic.VanillaWorldCompat.isVanillaOverworld(world))
+         {
+-            int rarity = getRarityFunction.applyAsInt(((ChunkGenTFC) chunkGenerator).s);
++            int rarity = getRarityFunction.applyAsInt(chunkGenerator instanceof ChunkGenTFC ? ((ChunkGenTFC) chunkGenerator).s : net.dries007.tfc.world.classic.VanillaWorldCompat.defaultSettings());
+             if (rarity != 0 && random.nextInt(rarity) == 0)
+                 worldGenerator.generate(random, chunkX, chunkZ, world, chunkGenerator, chunkProvider);
+         }
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/WorldGenBerryBushes.java src/main/java/net/dries007/tfc/world/classic/worldgen/WorldGenBerryBushes.java
+--- tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/WorldGenBerryBushes.java
++++ src/main/java/net/dries007/tfc/world/classic/worldgen/WorldGenBerryBushes.java
+@@ -35,7 +35,7 @@
+     @Override
+     public void generate(Random random, int chunkX, int chunkZ, World world, IChunkGenerator chunkGenerator, IChunkProvider chunkProvider)
+     {
+-        if (chunkGenerator instanceof ChunkGenTFC && world.provider.getDimension() == 0 && BUSHES.size() > 0 && ConfigTFC.General.FOOD.berryBushRarity > 0)
++        if (net.dries007.tfc.world.classic.VanillaWorldCompat.shouldGenerate(world, chunkGenerator) && world.provider.getDimension() == 0 && BUSHES.size() > 0 && ConfigTFC.General.FOOD.berryBushRarity > 0)
+         {
+             if (random.nextInt(ConfigTFC.General.FOOD.berryBushRarity) == 0)
+             {
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/WorldGenFruitTrees.java src/main/java/net/dries007/tfc/world/classic/worldgen/WorldGenFruitTrees.java
+--- tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/WorldGenFruitTrees.java
++++ src/main/java/net/dries007/tfc/world/classic/worldgen/WorldGenFruitTrees.java
+@@ -36,7 +36,7 @@
+     @Override
+     public void generate(Random random, int chunkX, int chunkZ, World world, IChunkGenerator chunkGenerator, IChunkProvider chunkProvider)
+     {
+-        if (chunkGenerator instanceof ChunkGenTFC && world.provider.getDimension() == 0 && TREES.size() > 0 && ConfigTFC.General.FOOD.fruitTreeRarity > 0)
++        if (net.dries007.tfc.world.classic.VanillaWorldCompat.shouldGenerate(world, chunkGenerator) && world.provider.getDimension() == 0 && TREES.size() > 0 && ConfigTFC.General.FOOD.fruitTreeRarity > 0)
+         {
+             if (random.nextInt(ConfigTFC.General.FOOD.fruitTreeRarity) == 0)
+             {
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/WorldGenLargeRocks.java src/main/java/net/dries007/tfc/world/classic/worldgen/WorldGenLargeRocks.java
+--- tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/WorldGenLargeRocks.java
++++ src/main/java/net/dries007/tfc/world/classic/worldgen/WorldGenLargeRocks.java
+@@ -25,7 +25,7 @@
+     {
+         final BlockPos chunkBlockPos = new BlockPos(chunkX << 4, 0, chunkZ << 4);
+         BlockPos start = world.getTopSolidOrLiquidBlock(chunkBlockPos.add(8 + rng.nextInt(16), 0, 8 + rng.nextInt(16))).add(0, -1, 0);
+-        if (start.getY() > 155 && !BlocksTFC.isSoil(world.getBlockState(start))) return;
++        if (net.dries007.tfc.world.classic.VanillaWorldCompat.toTfcY(start.getY()) > 155 && !BlocksTFC.isSoil(world.getBlockState(start))) return;
+ 
+         int y = 1;
+         boolean isFlatEnough = false;
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/WorldGenLooseRocks.java src/main/java/net/dries007/tfc/world/classic/worldgen/WorldGenLooseRocks.java
+--- tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/WorldGenLooseRocks.java
++++ src/main/java/net/dries007/tfc/world/classic/worldgen/WorldGenLooseRocks.java
+@@ -49,7 +49,7 @@
+     @Override
+     public void generate(Random random, int chunkX, int chunkZ, World world, IChunkGenerator chunkGenerator, IChunkProvider chunkProvider)
+     {
+-        if (chunkGenerator instanceof ChunkGenTFC && world.provider.getDimension() == 0)
++        if (net.dries007.tfc.world.classic.VanillaWorldCompat.shouldGenerate(world, chunkGenerator) && world.provider.getDimension() == 0)
+         {
+             final BlockPos chunkBlockPos = new BlockPos(chunkX << 4, 0, chunkZ << 4);
+             final ChunkDataTFC baseChunkData = ChunkDataTFC.get(world, chunkBlockPos);
+@@ -74,7 +74,7 @@
+                 }
+ 
+                 // Default to 35 below the surface, like classic
+-                int lowestYScan = Math.max(10, world.getTopSolidOrLiquidBlock(chunkBlockPos).getY() - ConfigTFC.General.WORLD.looseRockScan);
++                int lowestYScan = net.dries007.tfc.world.classic.VanillaWorldCompat.toTfcY(Math.max(10, world.getTopSolidOrLiquidBlock(chunkBlockPos).getY() - ConfigTFC.General.WORLD.looseRockScan));
+ 
+ 
+                 veins = WorldGenOreVeins.getNearbyVeins(chunkX, chunkZ, world.getSeed(), 1);
+@@ -116,7 +116,7 @@
+         // Use air, so it doesn't replace other replaceable world gen
+         // This matches the check in BlockPlacedItemFlat for if the block can stay
+         // Also, only add on soil, since this is called by the world regen handler later
+-        if (world.isAirBlock(pos) && world.getBlockState(pos.down()).isSideSolid(world, pos.down(), EnumFacing.UP) && BlocksTFC.isSoil(world.getBlockState(pos.down())))
++        if (world.isAirBlock(pos) && world.getBlockState(pos.down()).isSideSolid(world, pos.down(), EnumFacing.UP) && BlocksTFC.isSoilForPlacement(world.getBlockState(pos.down())))
+         {
+             world.setBlockState(pos, BlocksTFC.PLACED_ITEM_FLAT.getDefaultState(), 2);
+             TEPlacedItemFlat tile = Helpers.getTE(world, pos, TEPlacedItemFlat.class);
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/WorldGenOreVeins.java src/main/java/net/dries007/tfc/world/classic/worldgen/WorldGenOreVeins.java
+--- tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/WorldGenOreVeins.java
++++ src/main/java/net/dries007/tfc/world/classic/worldgen/WorldGenOreVeins.java
+@@ -28,6 +28,8 @@
+ 
+ public class WorldGenOreVeins implements IWorldGenerator
+ {
++    private static final com.google.common.base.Predicate<IBlockState> STONE_PREDICATE = net.minecraft.block.state.pattern.BlockMatcher.forBlock(net.minecraft.init.Blocks.STONE);
++
+     private static final Random LOCAL_RANDOM = new Random();
+     public static int CHUNK_RADIUS = 1;
+ 
+@@ -58,17 +60,22 @@
+     @Override
+     public void generate(Random random, int chunkX, int chunkZ, World world, IChunkGenerator chunkGenerator, IChunkProvider chunkProvider)
+     {
+-        if (!(chunkGenerator instanceof ChunkGenTFC)) return;
++        if (!net.dries007.tfc.world.classic.VanillaWorldCompat.shouldGenerate(world, chunkGenerator)) return;
+         final BlockPos chunkBlockPos = new BlockPos(chunkX << 4, 0, chunkZ << 4);
+         ChunkDataTFC chunkData = ChunkDataTFC.get(world, chunkBlockPos);
+         if (!chunkData.isInitialized()) return;
+         if (world.provider.getDimension() != 0) return;
+ 
+         List<Vein> veins = getNearbyVeins(chunkX, chunkZ, world.getSeed(), CHUNK_RADIUS);
++        // 改造版：非群峦世界里，矿脉长在原版石头（以及声明可被矿石替换的模组石头）里，
++        // 用哪种岩石的矿石、这条矿脉能不能出现，按这个位置的群峦岩层决定；矿脉高度从群峦高度换算过来
++        final boolean vanilla = !(chunkGenerator instanceof net.dries007.tfc.world.classic.ChunkGenTFC);
+ 
+         for (Vein vein : veins)
+         {
+             boolean generated = false;
++            final int lowestY = vanilla ? net.dries007.tfc.world.classic.VanillaWorldCompat.fromTfcY(vein.getLowestY()) : vein.getLowestY();
++            final int highestY = vanilla ? net.dries007.tfc.world.classic.VanillaWorldCompat.fromTfcY(vein.getHighestY()) : vein.getHighestY();
+             for (int x = chunkBlockPos.getX() + 8; x < chunkBlockPos.getX() + 24; x++)
+             {
+                 for (int z = chunkBlockPos.getZ() + 8; z < chunkBlockPos.getZ() + 24; z++)
+@@ -76,18 +83,32 @@
+                     // Do checks here that are specific to the the horizontal position, not the vertical one
+                     if (vein.inRange(x, z, 0))
+                     {
+-                        for (int y = vein.getLowestY(); y <= vein.getHighestY(); y++)
++                        ChunkDataTFC columnData = null;
++                        for (int y = lowestY; y <= highestY; y++)
+                         {
+                             final BlockPos posAt = new BlockPos(x, y, z);
++                            final BlockPos veinPos = vanilla ? new BlockPos(x, net.dries007.tfc.world.classic.VanillaWorldCompat.toTfcY(y), z) : posAt;
++                            if (random.nextDouble() >= vein.getChanceToGenerate(veinPos)) continue;
+                             final IBlockState stateAt = world.getBlockState(posAt);
+ 
+                             // Do checks specific to the individual block pos that is getting replaced
+-                            if (random.nextDouble() < vein.getChanceToGenerate(posAt) && stateAt.getBlock() instanceof BlockRockVariant)
++                            if (stateAt.getBlock() instanceof BlockRockVariant)
+                             {
+                                 final BlockRockVariant blockAt = (BlockRockVariant) stateAt.getBlock();
+                                 if (blockAt.getType() == Rock.Type.RAW && vein.canSpawnIn(blockAt.getRock()))
+                                 {
+                                     world.setBlockState(posAt, vein.getOreState(blockAt.getRock()), 2);
++                                    generated = true;
++                                }
++                            }
++                            else if (vanilla && stateAt.getBlock().isReplaceableOreGen(stateAt, world, posAt, STONE_PREDICATE))
++                            {
++                                if (columnData == null) columnData = ChunkDataTFC.get(world, posAt);
++                                if (!columnData.isInitialized()) break;
++                                final Rock rock = columnData.getRockLayerHeight(x & 15, y, z & 15);
++                                if (rock != null && vein.canSpawnIn(rock))
++                                {
++                                    world.setBlockState(posAt, vein.getOreState(rock), 2);
+                                     generated = true;
+                                 }
+                             }
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/WorldGenSoilPits.java src/main/java/net/dries007/tfc/world/classic/worldgen/WorldGenSoilPits.java
+--- tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/WorldGenSoilPits.java
++++ src/main/java/net/dries007/tfc/world/classic/worldgen/WorldGenSoilPits.java
+@@ -37,7 +37,7 @@
+     @Override
+     public void generate(Random random, int chunkX, int chunkZ, World world, IChunkGenerator chunkGenerator, IChunkProvider chunkProvider)
+     {
+-        if (!(chunkGenerator instanceof ChunkGenTFC)) return;
++        if (!net.dries007.tfc.world.classic.VanillaWorldCompat.shouldGenerate(world, chunkGenerator)) return;
+         final BlockPos chunkBlockPos = new BlockPos(chunkX << 4, 0, chunkZ << 4);
+ 
+         BlockPos pos = world.getTopSolidOrLiquidBlock(chunkBlockPos.add(8 + random.nextInt(16), 0, 8 + random.nextInt(16)));
+@@ -53,7 +53,7 @@
+         // Otherwise, do not change this unless you are prepared to do some fairly large re-writes, similar to how ore gen is handled
+         int radius = rng.nextInt(6) + 2;
+         int depth = rng.nextInt(3) + 1;
+-        if (rng.nextInt(ConfigTFC.General.WORLD.clayRarity) != 0 || start.getY() > WorldTypeTFC.SEALEVEL + 6) return;
++        if (rng.nextInt(ConfigTFC.General.WORLD.clayRarity) != 0 || net.dries007.tfc.world.classic.VanillaWorldCompat.toTfcY(start.getY()) > WorldTypeTFC.SEALEVEL + 6) return;
+         if (ChunkDataTFC.getRainfall(world, start) < ConfigTFC.General.WORLD.clayRainfallThreshold) return;
+ 
+         for (int x = -radius; x <= radius; x++)
+@@ -78,6 +78,17 @@
+                         world.setBlockState(pos, BlockRockVariant.get(ChunkDataTFC.getRockHeight(world, pos), Rock.Type.CLAY_GRASS).getDefaultState(), 2);
+                         flag = true;
+                     }
++                    else if (BlocksTFC.isVanillaDirt(current))
++                    {
++                        // 改造版：原版泥土里也埋黏土
++                        world.setBlockState(pos, BlockRockVariant.get(ChunkDataTFC.getRockHeight(world, pos), Rock.Type.CLAY).getDefaultState(), 2);
++                        flag = true;
++                    }
++                    else if (BlocksTFC.isVanillaGrass(current))
++                    {
++                        world.setBlockState(pos, BlockRockVariant.get(ChunkDataTFC.getRockHeight(world, pos), Rock.Type.CLAY_GRASS).getDefaultState(), 2);
++                        flag = true;
++                    }
+                 }
+                 if (flag && rng.nextInt(15) == 0)
+                 {
+@@ -112,7 +123,7 @@
+         int radius = rng.nextInt(4) + 4;
+         byte depth = 2;
+ 
+-        if (rng.nextInt(30) != 0 || start.getY() > WorldTypeTFC.SEALEVEL) return false;
++        if (rng.nextInt(30) != 0 || net.dries007.tfc.world.classic.VanillaWorldCompat.toTfcY(start.getY()) > WorldTypeTFC.SEALEVEL) return false;
+         ChunkDataTFC data = ChunkDataTFC.get(world, start);
+         if (data.isInitialized() && data.getRainfall() >= 375f && data.getFloraDiversity() >= 0.5f && data.getFloraDensity() >= 0.5f && world.getBiome(start).getHeightVariation() < 0.15)
+             return false;
+@@ -128,11 +139,11 @@
+                     final BlockPos pos = start.add(x, y, z);
+                     final IBlockState current = world.getBlockState(pos);
+ 
+-                    if (BlocksTFC.isGrass(current))
++                    if (BlocksTFC.isGrass(current) || BlocksTFC.isVanillaGrass(current))
+                     {
+                         world.setBlockState(pos, BlocksTFC.PEAT_GRASS.getDefaultState(), 2);
+                     }
+-                    else if (BlocksTFC.isDirt(current) || BlocksTFC.isClay(current))
++                    else if (BlocksTFC.isDirt(current) || BlocksTFC.isClay(current) || BlocksTFC.isVanillaDirt(current))
+                     {
+                         world.setBlockState(pos, BlocksTFC.PEAT.getDefaultState(), 2);
+                     }
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/WorldGenTrees.java src/main/java/net/dries007/tfc/world/classic/worldgen/WorldGenTrees.java
+--- tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/WorldGenTrees.java
++++ src/main/java/net/dries007/tfc/world/classic/worldgen/WorldGenTrees.java
+@@ -62,15 +62,21 @@
+     @Override
+     public void generate(Random random, int chunkX, int chunkZ, World world, IChunkGenerator chunkGenerator, IChunkProvider chunkProvider)
+     {
+-        if (!(chunkGenerator instanceof ChunkGenTFC)) return;
++        if (!net.dries007.tfc.world.classic.VanillaWorldCompat.shouldGenerate(world, chunkGenerator)) return;
+ 
+         final BlockPos chunkBlockPos = new BlockPos(chunkX << 4, 0, chunkZ << 4);
+         ChunkDataTFC chunkData = ChunkDataTFC.get(world, chunkBlockPos);
+         if (!chunkData.isInitialized()) return;
+ 
+         final Biome b = world.getBiome(chunkBlockPos);
+-        if (!(b instanceof BiomeTFC) || b == BiomesTFC.OCEAN || b == BiomesTFC.DEEP_OCEAN)
++        if (b instanceof BiomeTFC)
++        {
++            if (b == BiomesTFC.OCEAN || b == BiomesTFC.DEEP_OCEAN) return;
++        }
++        else if (!net.dries007.tfc.world.classic.VanillaWorldCompat.isVanillaOverworld(world) || net.dries007.tfc.world.classic.VanillaWorldCompat.isSaltyBiome(b))
++        {
+             return;
++        }
+ 
+         final TemplateManager manager = ((WorldServer) world).getStructureTemplateManager();
+         final float diversity = chunkData.getFloraDiversity();
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/WorldGenWildCrops.java src/main/java/net/dries007/tfc/world/classic/worldgen/WorldGenWildCrops.java
+--- tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/WorldGenWildCrops.java
++++ src/main/java/net/dries007/tfc/world/classic/worldgen/WorldGenWildCrops.java
+@@ -39,7 +39,7 @@
+     @Override
+     public void generate(Random random, int chunkX, int chunkZ, World world, IChunkGenerator chunkGenerator, IChunkProvider chunkProvider)
+     {
+-        if (chunkGenerator instanceof ChunkGenTFC && world.provider.getDimension() == 0 && CROPS.size() > 0 && ConfigTFC.General.FOOD.cropRarity > 0)
++        if (net.dries007.tfc.world.classic.VanillaWorldCompat.shouldGenerate(world, chunkGenerator) && world.provider.getDimension() == 0 && CROPS.size() > 0 && ConfigTFC.General.FOOD.cropRarity > 0)
+         {
+             if (random.nextInt(ConfigTFC.General.FOOD.cropRarity) == 0)
+             {
+@@ -78,6 +78,6 @@
+ 
+     protected boolean isValidPosition(World world, BlockPos pos)
+     {
+-        return world.isAirBlock(pos) && BlocksTFC.isSoil(world.getBlockState(pos.down()));
++        return world.isAirBlock(pos) && BlocksTFC.isSoilForPlacement(world.getBlockState(pos.down()));
+     }
+ }
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/trees/TreeGenBushes.java src/main/java/net/dries007/tfc/world/classic/worldgen/trees/TreeGenBushes.java
+--- tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/trees/TreeGenBushes.java
++++ src/main/java/net/dries007/tfc/world/classic/worldgen/trees/TreeGenBushes.java
+@@ -56,7 +56,7 @@
+     public boolean canGenerateTree(World world, BlockPos pos, Tree treeType)
+     {
+         // Check if there is soil beneath
+-        if (!BlocksTFC.isSoil(world.getBlockState(pos.down())))
++        if (!BlocksTFC.isSoilForPlacement(world.getBlockState(pos.down())))
+             return false;
+ 
+         // Check the position for liquids, etc.
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/trees/TreeGenKapok.java src/main/java/net/dries007/tfc/world/classic/worldgen/trees/TreeGenKapok.java
+--- tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/trees/TreeGenKapok.java
++++ src/main/java/net/dries007/tfc/world/classic/worldgen/trees/TreeGenKapok.java
+@@ -79,13 +79,13 @@
+     {
+         for (BlockPos p1 : trunkPos)
+         {
+-            if (BlocksTFC.isSoil(world.getBlockState(pos.add(p1))))
++            if (BlocksTFC.isSoilForPlacement(world.getBlockState(pos.add(p1))))
+                 continue;
+             if (world.getBlockState(pos.add(p1)).getMaterial().isReplaceable())
+             {
+-                if (BlocksTFC.isSoil(world.getBlockState(pos.add(p1).down(1))))
++                if (BlocksTFC.isSoilForPlacement(world.getBlockState(pos.add(p1).down(1))))
+                     continue;
+-                if (BlocksTFC.isSoil(world.getBlockState(pos.add(p1).down(2))) && world.getBlockState(pos.add(p1.down(1))).getMaterial().isReplaceable())
++                if (BlocksTFC.isSoilForPlacement(world.getBlockState(pos.add(p1).down(2))) && world.getBlockState(pos.add(p1.down(1))).getMaterial().isReplaceable())
+                     continue;
+             }
+             return false;
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/trees/TreeGenSequoia.java src/main/java/net/dries007/tfc/world/classic/worldgen/trees/TreeGenSequoia.java
+--- tfc-1.7.23.181/net/dries007/tfc/world/classic/worldgen/trees/TreeGenSequoia.java
++++ src/main/java/net/dries007/tfc/world/classic/worldgen/trees/TreeGenSequoia.java
+@@ -70,13 +70,13 @@
+     {
+         for (BlockPos p1 : OFFSETS)
+         {
+-            if (!BlocksTFC.isSoil(world.getBlockState(pos.add(p1).down())))
++            if (!BlocksTFC.isSoilForPlacement(world.getBlockState(pos.add(p1).down())))
+             {
+                 if (world.getBlockState(pos.add(p1)).getMaterial().isReplaceable())
+                 {
+-                    if (BlocksTFC.isSoil(world.getBlockState(pos.add(p1).down(1))))
++                    if (BlocksTFC.isSoilForPlacement(world.getBlockState(pos.add(p1).down(1))))
+                         continue;
+-                    if (BlocksTFC.isSoil(world.getBlockState(pos.add(p1).down(2))) && world.getBlockState(pos.add(p1.down(1))).getMaterial().isReplaceable())
++                    if (BlocksTFC.isSoilForPlacement(world.getBlockState(pos.add(p1).down(2))) && world.getBlockState(pos.add(p1.down(1))).getMaterial().isReplaceable())
+                         continue;
+                 }
+                 return false;

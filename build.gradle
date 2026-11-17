@@ -1,0 +1,29 @@
+// 只编译改动过的群峦源码，产物再由 tools/make_jar.py 覆盖进官方群峦 jar
+buildscript {
+    repositories {
+        maven { url = 'https://maven.minecraftforge.net/' }
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'net.minecraftforge.gradle:ForgeGradle:2.3-SNAPSHOT'
+    }
+}
+apply plugin: 'net.minecraftforge.gradle.forge'
+version = '1.7.23.181-wp1'
+group = 'net.dries007.tfc'
+archivesBaseName = 'tfc-patch-classes'
+sourceCompatibility = targetCompatibility = '1.8'
+compileJava.options.encoding = 'UTF-8'
+repositories {
+    maven { url = 'https://maven.minecraftforge.net/' }
+    mavenCentral()
+    flatDir { dirs 'libs' }
+}
+minecraft {
+    version = "1.12.2-14.23.5.2847"
+    mappings = "stable_39"
+    runDir = 'run'
+}
+dependencies {
+    deobfProvided 'local:TerraFirmaCraft-MC1.12.2:1.7.23.181'
+}

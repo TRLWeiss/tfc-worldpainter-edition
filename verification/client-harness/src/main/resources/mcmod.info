@@ -1,0 +1,1 @@
+[{"modid":"tfcwptest","name":"TFCWP Client Test Harness","version":"1.0","mcversion":"1.12.2","description":"只用于自动化验证：自动进入指定存档、执行检查命令、截图、退出。不要放进正式整合包。"}]

@@ -1,0 +1,11 @@
+build/
+.gradle/
+run/
+out/
+libs/*.jar
+verification/client-harness/build/
+verification/client-harness/.gradle/
+verification/client-harness/libs/*.jar
+*.log
+*.log.gz
+.DS_Store

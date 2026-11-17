@@ -1,0 +1,27 @@
+# 测试结果
+
+测试地图是用纯 Forge 1.12.2 服务端（不装任何模组）生成的原版地图：全是原版方块，区块标为已装饰，和 WorldPainter 导出的地图情况一样。
+
+附属组合：TFC-Metallum 1.4.2、tfc_rocksplus 1.3.5、firmalife 0.5.1、Dynamic Trees 0.9.29、Dynamic Trees TFC 0.9.17、TFCTech Unofficial 1.2.16、Patchouli、JustEnoughIDs、MixinBooter，并使用一个整合包的群峦矿脉配置。
+
+| 测试 | 结果 |
+|---|---|
+| 专用服务器打开原版地图 | 原版地形方块 464 万个全部保留；原版石头里长出 59846 个群峦矿石，53 种，678 条矿脉；矿苗和散石 2619 个；黏土、果树、野生作物、群峦植物都有 |
+| 再次打开同一存档 | 所有统计数字不变，没有重复生成 |
+| 地图外新生成的原版区块 | 同样有群峦矿脉、植物、动态树 |
+| 单人客户端 | 喝原版水：口渴 20→30；原版耕地种大麦：自动变成群峦耕地并种上；气温 Y63 22.8°C、Y123 13.0°C、Y183 4.9°C；附近 10299 个群峦矿石，露在地表的 0 个；刷出 14 种群峦动物 |
+| 正常的群峦世界，同种子对比官方版 | 矿石数都是 130998；整体方块差异 765，官方版自己两次生成的差异是 860 |
+| 约 190 个模组的群峦整合包（含 OptiFine），单人客户端 | 正常加载、进图、退出；喝水、种地通过；附近 43829 个群峦矿石，露在地表的 0 个；刷出 17 种以上群峦动物 |
+
+截图：
+
+- [screenshots/vanilla-map-tfc-content.png](screenshots/vanilla-map-tfc-content.png)：原版地图里的群峦内容
+- [screenshots/full-modpack.png](screenshots/full-modpack.png)：整合包环境
+
+没有验证的：真正的 WorldPainter 导出文件、多人服务器、长时间实际游玩。
+
+## 测试工具
+
+- `run_server.py`：启动 Forge 专用服务器，开服后依次执行控制台命令再关服。
+- `run_client.py`：在 macOS arm64 上用命令行启动 Forge 客户端，读取启动器的版本 json。路径按 macOS 的默认 `.minecraft` 位置写，其他系统需要自己改。
+- `client-harness/`：只用于自动测试的客户端小模组。启动参数带 `-Dtfcwptest.world=<存档文件夹>` 时，自动进入存档，检查喝水、种地、气温、矿石高度分布、群峦动物，截图后退出。不要放进正式游戏。
