@@ -65,6 +65,13 @@ public final class VanillaWorldCompat
     private static long dataGeneratorSeed;
     private static final Set<Long> PENDING = new LinkedHashSet<>();
     private static Generators generators;
+    private static boolean retrogenRunning;
+
+    /** 正在给已装饰（且可能已发给玩家）的区块补生成。只在服务端线程读写 */
+    public static boolean isRetrogenRunning()
+    {
+        return retrogenRunning;
+    }
 
     // ---------------------------------------------------------------- 世界判定
 
@@ -78,16 +85,27 @@ public final class VanillaWorldCompat
         return world.getWorldType() == TerraFirmaCraft.getWorldType();
     }
 
-    /** 非群峦世界类型的主世界，并且开启了原版世界支持 */
+    /** 配置里排除的世界类型（默认超平坦），这些世界完全按官方群峦处理，也就是什么都不做 */
+    public static boolean isExcludedWorldType(World world)
+    {
+        String name = world.getWorldType().getName();
+        for (String excluded : ConfigTFC.General.WORLD.nonTFCExcludedWorldTypes)
+        {
+            if (excluded != null && excluded.trim().equalsIgnoreCase(name)) return true;
+        }
+        return false;
+    }
+
+    /** 非群峦世界类型的主世界，开启了原版世界支持，且世界类型没被排除 */
     public static boolean isVanillaOverworld(World world)
     {
-        return isEnabled() && world.provider != null && world.provider.getDimension() == 0 && !isTFCWorldType(world);
+        return isEnabled() && world.provider != null && world.provider.getDimension() == 0 && !isTFCWorldType(world) && !isExcludedWorldType(world);
     }
 
     /** 群峦的规则（刷怪、动物气候等）在这个世界的主世界生效 */
     public static boolean isTFCOverworld(World world)
     {
-        return world.provider != null && world.provider.getDimension() == 0 && (isTFCWorldType(world) || isEnabled());
+        return world.provider != null && world.provider.getDimension() == 0 && (isTFCWorldType(world) || isVanillaOverworld(world));
     }
 
     /** 这个世界的区块要不要挂群峦区块数据 */
@@ -265,6 +283,7 @@ public final class VanillaWorldCompat
 
         boolean fallInstantly = BlockFalling.fallInstantly;
         BlockFalling.fallInstantly = true;
+        retrogenRunning = true;
         try
         {
             if (ConfigTFC.General.WORLD.retrogenOtherMods)
@@ -284,6 +303,7 @@ public final class VanillaWorldCompat
         finally
         {
             BlockFalling.fallInstantly = fallInstantly;
+            retrogenRunning = false;
         }
     }
 

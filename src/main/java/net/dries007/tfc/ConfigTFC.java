@@ -528,6 +528,13 @@ public final class ConfigTFC
                 "[改造版] 在非群峦世界生成群峦内容时，同时成群刷出群峦动物。"})
             @Config.LangKey("config." + MOD_ID + ".general.world.nonTFCAnimals")
             public boolean nonTFCAnimals = true;
+
+            @Config.RequiresWorldRestart
+            @Config.Comment({"[WorldPainter edition] World types that are left completely alone (no TFC content, no TFC chunk data, no TFC spawn rules). Superflat is excluded by default so existing creative/building worlds are not changed.",
+                "[改造版] 完全不处理的世界类型：不生成群峦内容、不挂群峦区块数据、不套用群峦刷怪规则。默认排除超平坦，避免改动已有的建筑/创造存档。",
+                "Vanilla names: default, flat, largeBiomes, amplified, customized, debug_all_block_states"})
+            @Config.LangKey("config." + MOD_ID + ".general.world.nonTFCExcludedWorldTypes")
+            public String[] nonTFCExcludedWorldTypes = {"flat", "debug_all_block_states"};
         }
 
         public static final class WorldRegenCFG

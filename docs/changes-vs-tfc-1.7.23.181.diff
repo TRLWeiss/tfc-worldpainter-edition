@@ -44,7 +44,7 @@ diff -ruN tfc-1.7.23.181/net/dries007/tfc/CommonEventHandler.java src/main/java/
 diff -ruN tfc-1.7.23.181/net/dries007/tfc/ConfigTFC.java src/main/java/net/dries007/tfc/ConfigTFC.java
 --- tfc-1.7.23.181/net/dries007/tfc/ConfigTFC.java
 +++ src/main/java/net/dries007/tfc/ConfigTFC.java
-@@ -491,7 +491,44 @@
+@@ -491,7 +491,51 @@
                  "You must specify by following the pattern 'modid:entity <rarity> <minGroupSpawn> <maxGroupSpawn>'",
                  "Invalid entries will be ignored."})
              @Config.LangKey("config." + MOD_ID + ".general.world.respawnableCreatures")
@@ -86,6 +86,13 @@ diff -ruN tfc-1.7.23.181/net/dries007/tfc/ConfigTFC.java src/main/java/net/dries
 +                "[改造版] 在非群峦世界生成群峦内容时，同时成群刷出群峦动物。"})
 +            @Config.LangKey("config." + MOD_ID + ".general.world.nonTFCAnimals")
 +            public boolean nonTFCAnimals = true;
++
++            @Config.RequiresWorldRestart
++            @Config.Comment({"[WorldPainter edition] World types that are left completely alone (no TFC content, no TFC chunk data, no TFC spawn rules). Superflat is excluded by default so existing creative/building worlds are not changed.",
++                "[改造版] 完全不处理的世界类型：不生成群峦内容、不挂群峦区块数据、不套用群峦刷怪规则。默认排除超平坦，避免改动已有的建筑/创造存档。",
++                "Vanilla names: default, flat, largeBiomes, amplified, customized, debug_all_block_states"})
++            @Config.LangKey("config." + MOD_ID + ".general.world.nonTFCExcludedWorldTypes")
++            public String[] nonTFCExcludedWorldTypes = {"flat", "debug_all_block_states"};
 +        }
  
          public static final class WorldRegenCFG
@@ -271,6 +278,19 @@ diff -ruN tfc-1.7.23.181/net/dries007/tfc/objects/items/ItemSeedsTFC.java src/ma
          if (facing == EnumFacing.UP && player.canPlayerEdit(pos.offset(facing), facing, itemstack) && state.getBlock().canSustainPlant(state, worldIn, pos, EnumFacing.UP, this) && worldIn.isAirBlock(pos.up()) && state.getBlock() instanceof BlockFarmlandTFC)
          {
              worldIn.setBlockState(pos.up(), BlockCropTFC.get(crop).getDefaultState());
+diff -ruN tfc-1.7.23.181/net/dries007/tfc/objects/te/TEBase.java src/main/java/net/dries007/tfc/objects/te/TEBase.java
+--- tfc-1.7.23.181/net/dries007/tfc/objects/te/TEBase.java
++++ src/main/java/net/dries007/tfc/objects/te/TEBase.java
+@@ -97,6 +97,9 @@
+ 
+     private void sendVanillaUpdatePacket()
+     {
++        // 改造版：给已经发给玩家的区块补生成时，不抢先单独发方块实体数据（方块变化要到下一刻才发，客户端会收到“没有方块的方块实体”），
++        // 交给原版区块同步流程按先方块后数据的顺序一起发
++        if (net.dries007.tfc.world.classic.VanillaWorldCompat.isRetrogenRunning()) return;
+         SPacketUpdateTileEntity packet = getUpdatePacket();
+         if (packet != null && world instanceof WorldServer)
+         {
 diff -ruN tfc-1.7.23.181/net/dries007/tfc/util/RegenRocksSticks.java src/main/java/net/dries007/tfc/util/RegenRocksSticks.java
 --- tfc-1.7.23.181/net/dries007/tfc/util/RegenRocksSticks.java
 +++ src/main/java/net/dries007/tfc/util/RegenRocksSticks.java
@@ -308,7 +328,7 @@ diff -ruN tfc-1.7.23.181/net/dries007/tfc/util/climate/ClimateHelper.java src/ma
 diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/VanillaWorldCompat.java src/main/java/net/dries007/tfc/world/classic/VanillaWorldCompat.java
 --- tfc-1.7.23.181/net/dries007/tfc/world/classic/VanillaWorldCompat.java
 +++ src/main/java/net/dries007/tfc/world/classic/VanillaWorldCompat.java
-@@ -0,0 +1,492 @@
+@@ -0,0 +1,512 @@
 +/*
 + * Work under Copyright. Licensed under the EUPL.
 + * See the project README.md and LICENSE.txt for more information.
@@ -376,6 +396,13 @@ diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/VanillaWorldCompat.java 
 +    private static long dataGeneratorSeed;
 +    private static final Set<Long> PENDING = new LinkedHashSet<>();
 +    private static Generators generators;
++    private static boolean retrogenRunning;
++
++    /** 正在给已装饰（且可能已发给玩家）的区块补生成。只在服务端线程读写 */
++    public static boolean isRetrogenRunning()
++    {
++        return retrogenRunning;
++    }
 +
 +    // ---------------------------------------------------------------- 世界判定
 +
@@ -389,16 +416,27 @@ diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/VanillaWorldCompat.java 
 +        return world.getWorldType() == TerraFirmaCraft.getWorldType();
 +    }
 +
-+    /** 非群峦世界类型的主世界，并且开启了原版世界支持 */
++    /** 配置里排除的世界类型（默认超平坦），这些世界完全按官方群峦处理，也就是什么都不做 */
++    public static boolean isExcludedWorldType(World world)
++    {
++        String name = world.getWorldType().getName();
++        for (String excluded : ConfigTFC.General.WORLD.nonTFCExcludedWorldTypes)
++        {
++            if (excluded != null && excluded.trim().equalsIgnoreCase(name)) return true;
++        }
++        return false;
++    }
++
++    /** 非群峦世界类型的主世界，开启了原版世界支持，且世界类型没被排除 */
 +    public static boolean isVanillaOverworld(World world)
 +    {
-+        return isEnabled() && world.provider != null && world.provider.getDimension() == 0 && !isTFCWorldType(world);
++        return isEnabled() && world.provider != null && world.provider.getDimension() == 0 && !isTFCWorldType(world) && !isExcludedWorldType(world);
 +    }
 +
 +    /** 群峦的规则（刷怪、动物气候等）在这个世界的主世界生效 */
 +    public static boolean isTFCOverworld(World world)
 +    {
-+        return world.provider != null && world.provider.getDimension() == 0 && (isTFCWorldType(world) || isEnabled());
++        return world.provider != null && world.provider.getDimension() == 0 && (isTFCWorldType(world) || isVanillaOverworld(world));
 +    }
 +
 +    /** 这个世界的区块要不要挂群峦区块数据 */
@@ -576,6 +614,7 @@ diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/VanillaWorldCompat.java 
 +
 +        boolean fallInstantly = BlockFalling.fallInstantly;
 +        BlockFalling.fallInstantly = true;
++        retrogenRunning = true;
 +        try
 +        {
 +            if (ConfigTFC.General.WORLD.retrogenOtherMods)
@@ -595,6 +634,7 @@ diff -ruN tfc-1.7.23.181/net/dries007/tfc/world/classic/VanillaWorldCompat.java 
 +        finally
 +        {
 +            BlockFalling.fallInstantly = fallInstantly;
++            retrogenRunning = false;
 +        }
 +    }
 +

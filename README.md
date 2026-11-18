@@ -30,7 +30,7 @@
 ## 安装
 
 1. 删掉 `mods` 里官方的 `TerraFirmaCraft-MC1.12.2-1.7.23.181.jar`，两个都留着会冲突。
-2. 放入 [Releases](../../releases) 里的 `TerraFirmaCraft-MC1.12.2-1.7.23.181-wp1.jar`。
+2. 放入 [Releases](../../releases) 里的 `TerraFirmaCraft-MC1.12.2-1.7.23.181-wp2.jar`。
 3. 服务器和客户端都要换。
 
 版本号没变，依赖群峦的附属照常加载。只适用于 1.7.23.181，别的群峦版本请不要用。
@@ -53,12 +53,20 @@
 | retrogenPopulatedChunks | true | 已装饰的区块补生成群峦内容 |
 | retrogenOtherMods | true | 补生成时把其他模组用标准接口注册的生成器也跑一遍 |
 | retrogenChunksPerTick | 4 | 每个游戏刻最多补多少个区块 |
+| nonTFCExcludedWorldTypes | flat, debug_all_block_states | 完全不处理的世界类型，默认排除超平坦 |
 | nonTFCAnimals | true | 生成时成群刷出群峦动物 |
 
 关于 `retrogenOtherMods`：
 
 - 打开时，WorldPainter 地图也能长出其他模组的东西。但 Dynamic Trees 会给原版群系再种一遍树，森林会变密。不想要就关掉，只补群峦的内容。
 - 拿一个已经被其他模组装饰过的旧存档来用时，必须关掉，不然其他模组的矿会重复生成。群峦自己的内容不会重复。
+
+超平坦世界默认被排除：不生成群峦内容、不挂群峦区块数据、不套群峦刷怪规则，避免改动已有的建筑存档。喝原版水、在原版耕地种群峦种子这两项在所有世界都有效。
+
+## 版本
+
+- **wp2**：默认排除超平坦世界（wp1 会往已有的超平坦存档里补生成群峦的树、植物和动物）；修掉补生成时客户端"没有方块的方块实体"报错（一次进图约 200 条）。
+- **wp1**：第一版。
 
 ## 已知限制
 
@@ -70,11 +78,11 @@
 
 ## 测试
 
-见 [verification/RESULTS.md](verification/RESULTS.md)。在 Forge 专用服务器、单人客户端和一个约 190 个模组的群峦整合包里测过。没有用真正的 WorldPainter 导出文件测过，也没测多人服务器。
+见 [verification/RESULTS.md](verification/RESULTS.md)。在 Forge 专用服务器、单人客户端和两个约 190 个模组的群峦整合包里测过。没有用真正的 WorldPainter 导出文件测过，也没测多人服务器。
 
 ## 从源码构建
 
-本仓库只放改动过的 26 个群峦源码文件（其中 1 个新增），和官方源码的逐行对照见 [docs/changes-vs-tfc-1.7.23.181.diff](docs/changes-vs-tfc-1.7.23.181.diff)。
+本仓库只放改动过的 27 个群峦源码文件（其中 1 个新增），和官方源码的逐行对照见 [docs/changes-vs-tfc-1.7.23.181.diff](docs/changes-vs-tfc-1.7.23.181.diff)。
 
 1. 把官方 `TerraFirmaCraft-MC1.12.2-1.7.23.181.jar` 放进 `libs/`。
 2. 用 JDK 8 编译：
@@ -86,7 +94,7 @@
 3. 把编译出的类覆盖进官方 jar：
 
    ```bash
-   python3 tools/make_jar.py libs/TerraFirmaCraft-MC1.12.2-1.7.23.181.jar build/libs/tfc-patch-classes-1.7.23.181-wp1.jar TerraFirmaCraft-MC1.12.2-1.7.23.181-wp1.jar
+   python3 tools/make_jar.py libs/TerraFirmaCraft-MC1.12.2-1.7.23.181.jar build/libs/tfc-patch-classes-1.7.23.181-wp1.jar TerraFirmaCraft-MC1.12.2-1.7.23.181-wp2.jar
    ```
 
 `make_jar.py` 会替换改动过的类，并删掉 jar 里 Forge 的注解缓存（`META-INF/fml_cache_*.json`），让 Forge 重新扫描。其余文件原样保留。
@@ -101,4 +109,4 @@ TerraFirmaCraft 采用 [EUPL 1.2](LICENSE)，本改造版同样采用 EUPL 1.2�
 
 An **unofficial** modification of TerraFirmaCraft 1.12.2 **1.7.23.181** (tag `v1.7.23.181`) that makes TFC generate its content — ore veins, loose rocks and ores, sticks, clay, peat, trees, plants, wild crops, berry bushes, fruit trees and animals — in overworlds that are **not** the TFC world type, such as maps made with WorldPainter. Vanilla stone, dirt, grass, sand and water are kept; TFC ores replace stone the way other mods' ores do. TFC heights are rescaled from sea level 144 to the vanilla sea level, vanilla water is drinkable, and TFC seeds can be planted on vanilla farmland. Regular TFC worlds behave the same as the official build.
 
-Replace the official jar with the release jar on both server and client. Settings are in `config/TerraFirmaCraft - General.cfg` under `world` (look for `[WorldPainter edition]`). Not affiliated with the TerraFirmaCraft team; please do not report issues with this build to them. Licensed under EUPL 1.2.
+Replace the official jar with the release jar on both server and client. Settings are in `config/TerraFirmaCraft - General.cfg` under `world` (look for `[WorldPainter edition]`). Superflat worlds are excluded by default. Not affiliated with the TerraFirmaCraft team; please do not report issues with this build to them. Licensed under EUPL 1.2.
